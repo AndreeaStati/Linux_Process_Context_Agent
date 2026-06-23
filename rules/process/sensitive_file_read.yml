@@ -1,0 +1,30 @@
+title: Sensitive Linux Account File Read
+id: lab-process-sensitive-account-file-read
+status: test
+description: Detecteaza citirea fisierelor locale sensibile de conturi.
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection_reader:
+    event.category: process
+    event.type: start
+    process.name:
+      - cat
+      - grep
+      - sed
+      - awk
+      - head
+      - tail
+      - less
+      - more
+  selection_target:
+    process.command_line|contains:
+      - "/etc/passwd"
+      - "/etc/shadow"
+      - "/etc/sudoers"
+  condition: selection_reader and selection_target
+level: medium
+tags:
+  - attack.discovery
+  - attack.t1087

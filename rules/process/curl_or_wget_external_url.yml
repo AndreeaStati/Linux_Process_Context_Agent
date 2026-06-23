@@ -1,0 +1,23 @@
+title: Curl Or Wget External URL Execution
+id: lab-process-curl-wget-external-url
+status: test
+description: Detectează executia curl/wget cu URL HTTP sau HTTPS in linia de comanda.
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection_process:
+    event.category: process
+    event.type: start
+    process.name:
+      - curl
+      - wget
+  selection_url:
+    process.command_line|contains:
+      - "http://"
+      - "https://"
+  condition: selection_process and selection_url
+level: medium
+tags:
+  - attack.command_and_control
+  - attack.t1105

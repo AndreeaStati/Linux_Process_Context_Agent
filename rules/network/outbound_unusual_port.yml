@@ -1,0 +1,24 @@
+title: Outbound Connection To Common Reverse Shell Port
+id: lab-network-outbound-reverse-shell-port
+status: test
+description: Detecteaza conexiuni outbound catre porturi folosite frecvent in teste de reverse shell.
+logsource:
+  product: linux
+  category: network_connection
+detection:
+  selection_network:
+    event.category: network
+    event.type: connection
+    event.action: network_connection_attempt
+    network.direction: outbound
+  selection_port:
+    destination.port:
+      - 4444
+      - 4445
+      - 1337
+      - 31337
+  condition: selection_network and selection_port
+level: high
+tags:
+  - attack.command_and_control
+  - attack.t1095

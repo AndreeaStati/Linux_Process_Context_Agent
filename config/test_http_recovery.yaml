@@ -1,0 +1,53 @@
+agent:
+  debug_drops: false
+  self_filter:
+    enabled: true
+
+ebpf:
+  sensors_path: ebpf/sensors.c
+  structures_path: ebpf/structures.h
+
+output:
+  mode: http
+  debug: true
+
+enrichment:
+  proc_enricher:
+    enabled: true
+    chunk_size: 4096
+    enable_hash_cache: true
+
+filters:
+  system_noise:
+    enabled: true
+    drop_vscode_noise: true
+    drop_proc_polling_noise: true
+    drop_process_inventory_noise: true
+    drop_event_receiver_noise: true
+
+rules:
+  sigma:
+    enabled: true
+    rules_dir: rules
+
+deduplication:
+  enabled: true
+  mode: mark
+  window_seconds: 5.0
+
+correlation:
+  enabled: true
+  window_seconds: 60.0
+  ignore_duplicates: true
+
+http:
+  endpoint: http://127.0.0.1:8080/api/edr/events
+  batch_size: 10
+  flush_interval_seconds: 1.0
+  timeout_seconds: 3.0
+  auth_token_env: EDR_HTTP_AUTH_TOKEN
+
+sqlite:
+  db_path: data/agent_events.db
+  max_rows: 50000
+  max_db_size_mb: 500

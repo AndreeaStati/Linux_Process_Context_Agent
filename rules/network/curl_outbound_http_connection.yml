@@ -1,0 +1,20 @@
+title: Curl Outbound HTTP Connection
+id: lab-network-curl-outbound-http
+status: test
+description: Detecteaza conexiuni HTTP outbound initiate de curl.
+logsource:
+  product: linux
+  category: network_connection
+detection:
+  selection:
+    event.category|contains: network
+    network.direction: outbound
+    process.name: curl
+    destination.port:
+      - 80
+      - 443
+  condition: selection
+level: medium
+tags:
+  - attack.command_and_control
+  - attack.t1105
