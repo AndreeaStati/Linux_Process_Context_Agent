@@ -81,7 +81,7 @@ def test_drops_configured_telemetry_connection():
 
     event = make_event(
         pid=6000,
-        ppid=1000,
+        ppid=5000,
         event_type=EVENT_CONNECT,
     )
     event.daddr = kernel_u32_from_ipv4("192.168.1.100")
@@ -90,7 +90,7 @@ def test_drops_configured_telemetry_connection():
     decision = agent_filter.evaluate(event)
 
     assert decision.drop is True
-    assert "telemetry connection" in decision.reason
+    assert decision.reason == "agent child event pid=6000 ppid=5000"
 
 
 def test_allows_non_telemetry_connection():

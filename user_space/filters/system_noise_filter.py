@@ -20,11 +20,17 @@ class SystemNoiseFilter:
         drop_proc_polling_noise: bool = True,
         drop_process_inventory_noise: bool = True,
         drop_event_receiver_noise: bool = True,
+        drop_shell_startup_noise: bool = True,
+        drop_development_git_noise: bool = True,
+        drop_known_sleep_polling_noise: bool = False,
     ) -> None:
         self.drop_vscode_noise = drop_vscode_noise
         self.drop_proc_polling_noise = drop_proc_polling_noise
         self.drop_process_inventory_noise = drop_process_inventory_noise
         self.drop_event_receiver_noise = drop_event_receiver_noise
+        self.drop_shell_startup_noise = drop_shell_startup_noise
+        self.drop_development_git_noise = drop_development_git_noise
+        self.drop_known_sleep_polling_noise = drop_known_sleep_polling_noise
 
     def evaluate(self, ecs_doc: Dict[str, Any]) -> FilterDecision:
         process = ecs_doc.get("process", {})
@@ -49,10 +55,33 @@ class SystemNoiseFilter:
             name=name,
             executable=executable,
             command_line=command_line,
+            args=args,
         ):
             return FilterDecision(
                 drop=True,
                 reason="vscode server operational noise",
+            )
+
+        if self.drop_shell_startup_noise and self._is_shell_startup_noise(
+            name=name,
+            executable=executable,
+            command_line=command_line,
+            args=args,
+        ):
+            return FilterDecision(
+                drop=True,
+                reason="shell startup helper noise",
+            )
+
+        if self.drop_development_git_noise and self._is_development_git_noise(
+            name=name,
+            executable=executable,
+            command_line=command_line,
+            args=args,
+        ):
+            return FilterDecision(
+                drop=True,
+                reason="development git background query noise",
             )
 
         if self.drop_proc_polling_noise and self._is_proc_polling_noise(
@@ -76,6 +105,17 @@ class SystemNoiseFilter:
                 reason="process inventory polling noise",
             )
 
+        if self.drop_known_sleep_polling_noise and self._is_known_sleep_polling_noise(
+            name=name,
+            executable=executable,
+            command_line=command_line,
+            args=args,
+        ):
+            return FilterDecision(
+                drop=True,
+                reason="known sleep polling noise",
+            )
+
         return FilterDecision(drop=False)
 
     def _is_event_receiver_server_noise(
@@ -85,13 +125,11 @@ class SystemNoiseFilter:
         command_line: str,
         args: list[str],
     ) -> bool:
-        searchable = " ".join(
-            [
-                name,
-                executable,
-                command_line,
-                " ".join(args),
-            ]
+        searchable = self._join_searchable(
+            name,
+            executable,
+            command_line,
+            " ".join(args),
         )
 
         return "event_receiver_server.py" in searchable
@@ -101,16 +139,123 @@ class SystemNoiseFilter:
         name: str,
         executable: str,
         command_line: str,
+        args: list[str],
     ) -> bool:
-        searchable = " ".join(
-            [
-                name,
-                executable,
-                command_line,
-            ]
+        searchable = self._join_searchable(
+            name,
+            executable,
+            command_line,
+            " ".join(args),
         )
 
-        return ".vscode-server" in searchable
+        if ".vscode-server" in searchable:
+            return True
+
+        if self._basename(executable) == "node" and "vscode" in searchable.lower():
+            return True
+
+        return False
+
+    def _is_shell_startup_noise(
+        self,
+        name: str,
+        executable: str,
+        command_line: str,
+        args: list[str],
+    ) -> bool:
+        base = self._basename(executable)
+
+        if name == "dircolors" or base == "dircolors":
+            return (
+                args == ["dircolors", "-b"]
+                or command_line == "dircolors -b"
+            )
+
+        searchable = self._join_searchable(
+            name,
+            executable,
+            command_line,
+            " ".join(args),
+        )
+
+        if "lesspipe" not in searchable:
+            return False
+
+        return name in {
+            "dash",
+            "sh",
+            "basename",
+            "dirname",
+        } or base in {
+            "dash",
+            "sh",
+            "basename",
+            "dirname",
+        }
+
+    def _is_development_git_noise(
+        self,
+        name: str,
+        executable: str,
+        command_line: str,
+        args: list[str],
+    ) -> bool:
+        base = self._basename(executable)
+
+        if name != "git" and base != "git":
+            return False
+
+        if args == ["git", "config", "--get", "commit.template"]:
+            return True
+
+        if args == ["git", "status", "-z", "-uall"]:
+            return True
+
+        if args == ["git", "worktree", "list", "--porcelain"]:
+            return True
+
+        if len(args) >= 2 and args[0] == "git" and args[1] == "for-each-ref":
+            return True
+
+        if len(args) >= 2 and args[0] == "git" and args[1] == "rev-parse":
+            return self._is_git_rev_parse_noise(args=args)
+
+        if command_line == "git config --get commit.template":
+            return True
+
+        if command_line == "git status -z -uall":
+            return True
+
+        if command_line == "git worktree list --porcelain":
+            return True
+
+        if command_line.startswith("git for-each-ref "):
+            return True
+
+        if command_line.startswith("git rev-parse "):
+            return self._is_git_rev_parse_command_noise(command_line=command_line)
+
+        return False
+
+    def _is_git_rev_parse_noise(self, args: list[str]) -> bool:
+        known_noise_args = {
+            ("git", "rev-parse", "--show-toplevel"),
+            ("git", "rev-parse", "--git-dir"),
+            ("git", "rev-parse", "--git-common-dir"),
+            ("git", "rev-parse", "--show-superproject-working-tree"),
+            ("git", "rev-parse", "--is-inside-work-tree"),
+        }
+
+        return tuple(args) in known_noise_args
+
+    def _is_git_rev_parse_command_noise(self, command_line: str) -> bool:
+        return command_line in {
+            "git rev-parse --show-toplevel",
+            "git rev-parse --git-dir",
+            "git rev-parse --git-common-dir",
+            "git rev-parse --show-superproject-working-tree",
+            "git rev-parse --is-inside-work-tree",
+        }
 
     def _is_proc_polling_noise(
         self,
@@ -196,18 +341,24 @@ class SystemNoiseFilter:
         }:
             return True
 
-        if args == [
-            "git",
-            "worktree",
-            "list",
-            "--porcelain",
-        ]:
-            return True
-
-        if command_line == "git worktree list --porcelain":
-            return True
-
         return False
+
+    def _is_known_sleep_polling_noise(
+        self,
+        name: str,
+        executable: str,
+        command_line: str,
+        args: list[str],
+    ) -> bool:
+        base = self._basename(executable)
+
+        if name != "sleep" and base != "sleep":
+            return False
+
+        return (
+            args == ["sleep", "1"]
+            or command_line == "sleep 1"
+        )
 
     def _basename(self, path: str) -> str:
         if not path:
@@ -230,3 +381,10 @@ class SystemNoiseFilter:
             for item in value
             if item is not None
         ]
+
+    def _join_searchable(self, *values: str) -> str:
+        return " ".join(
+            value
+            for value in values
+            if value
+        )

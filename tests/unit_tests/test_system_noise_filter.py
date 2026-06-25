@@ -213,4 +213,5 @@ def test_drops_git_worktree_inventory_command():
     decision = noise_filter.evaluate(doc)
 
     assert decision.drop is True
-    assert "process inventory" in decision.reason
+    assert "git" in decision.reason
+    assert "noise" in decision.reason

@@ -4,41 +4,40 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from output.http_shipper import HttpSQLiteDispatcher
-from output.sqlite_spool import SQLiteSpool
+from output.sqlite_event_buffer import SQLiteEventBuffer
 
+def test_sqlite_buffer_insert_fetch_and_delete(tmp_path):
+    buffer = SQLiteEventBuffer(tmp_path / "buffer.db", max_rows=100, max_db_size_mb=None)
 
-def test_sqlite_spool_insert_fetch_and_delete(tmp_path):
-    spool = SQLiteSpool(tmp_path / "spool.db", max_rows=100, max_db_size_mb=None)
-
-    row_id = spool.insert('{"event":{"action":"process_started"}}', now=10.0)
-    batch = spool.fetch_ready_batch(limit=10, now=11.0)
+    row_id = buffer.insert('{"event":{"action":"process_started"}}', now=10.0)
+    batch = buffer.fetch_ready_batch(limit=10, now=11.0)
 
     assert len(batch) == 1
     assert batch[0].id == row_id
     assert batch[0].attempts == 0
     assert json.loads(batch[0].payload)["event"]["action"] == "process_started"
 
-    spool.delete_many([row_id])
-    assert spool.count() == 0
+    buffer.delete_many([row_id])
+    assert buffer.count() == 0
 
-    spool.close()
+    buffer.close()
 
 
-def test_sqlite_spool_retention_deletes_oldest_rows(tmp_path):
-    spool = SQLiteSpool(tmp_path / "spool.db", max_rows=2, max_db_size_mb=None)
+def test_sqlite_buffer_retention_deletes_oldest_rows(tmp_path):
+    buffer = SQLiteEventBuffer(tmp_path / "buffer.db", max_rows=2, max_db_size_mb=None)
 
-    first = spool.insert('{"n":1}', now=1.0)
-    second = spool.insert('{"n":2}', now=2.0)
-    third = spool.insert('{"n":3}', now=3.0)
+    first = buffer.insert('{"n":1}', now=1.0)
+    second = buffer.insert('{"n":2}', now=2.0)
+    third = buffer.insert('{"n":3}', now=3.0)
 
-    batch = spool.fetch_ready_batch(limit=10, now=4.0)
+    batch = buffer.fetch_ready_batch(limit=10, now=4.0)
     ids = [record.id for record in batch]
 
     assert first not in ids
     assert ids == [second, third]
-    assert spool.count() == 2
+    assert buffer.count() == 2
 
-    spool.close()
+    buffer.close()
 
 
 class _CaptureHandler(BaseHTTPRequestHandler):
@@ -83,7 +82,7 @@ def test_http_sqlite_dispatcher_delivers_batch_and_deletes_rows(tmp_path):
 
     dispatcher = HttpSQLiteDispatcher(
         endpoint_url=endpoint,
-        db_path=tmp_path / "spool.db",
+        db_path=tmp_path / "buffer.db",
         batch_size=10,
         flush_interval_seconds=0.05,
         request_timeout_seconds=1.0,
@@ -96,7 +95,7 @@ def test_http_sqlite_dispatcher_delivers_batch_and_deletes_rows(tmp_path):
         dispatcher.emit({"event": {"action": "process_started"}, "process": {"pid": 123}})
         dispatcher.emit({"event": {"action": "network_connection_attempt"}})
 
-        assert _wait_until(lambda: dispatcher.spool.count() == 0)
+        assert _wait_until(lambda: dispatcher.event_buffer.count() == 0)
         assert len(handler.received_bodies) >= 1
 
         received_events = []
@@ -116,7 +115,7 @@ def test_http_sqlite_dispatcher_keeps_rows_on_retryable_failure(tmp_path):
 
     dispatcher = HttpSQLiteDispatcher(
         endpoint_url=endpoint,
-        db_path=tmp_path / "spool.db",
+        db_path=tmp_path / "buffer.db",
         batch_size=10,
         flush_interval_seconds=0.05,
         request_timeout_seconds=1.0,
@@ -131,7 +130,7 @@ def test_http_sqlite_dispatcher_keeps_rows_on_retryable_failure(tmp_path):
         dispatcher.emit({"event": {"action": "process_started"}})
 
         assert _wait_until(lambda: len(handler.received_bodies) >= 1)
-        assert dispatcher.spool.count() == 1
+        assert dispatcher.event_buffer.count() == 1
     finally:
         dispatcher.stop()
         server.shutdown()

@@ -1,0 +1,19 @@
+[Unit]
+Description=eBPF EDR Agent
+After=network.target edr-receiver.service
+Requires=edr-receiver.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/proc-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=EDR_OUTPUT_MODE=http
+Environment=EDR_OUTPUT_DEBUG=true
+Environment=EDR_HTTP_ENDPOINT=http://127.0.0.1:8080/api/edr/events
+Environment=AGENT_EVENTS_DB=/home/ubuntu/proc-agent/data/agent_events.db
+ExecStart=/usr/bin/python3 /home/ubuntu/proc-agent/user_space/main.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
