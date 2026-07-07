@@ -17,6 +17,11 @@ env/
 
 data/*.jsonl
 data/*.db
+data/agent_events.db-shm
+data/agent_events.db-wal
+data/backup_before_demo/agent_events.db-shm
+data/backup_before_demo/agent_events.db-wal
+data/backup_before_demo/received_events.jsonl
 
 .env
 .vscode/

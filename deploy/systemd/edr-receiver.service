@@ -4,6 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=/home/ubuntu/proc-agent
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /home/ubuntu/proc-agent/tools/event_receiver_server.py

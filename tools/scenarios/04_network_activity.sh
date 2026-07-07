@@ -29,3 +29,14 @@ for host, port in targets:
     finally:
         s.close()
 PY
+
+echo "[scenario] Conexiune catre port 4444"
+
+python3 -m http.server 4444 --bind 127.0.0.1 > /tmp/edr_http_4444.log 2>&1 &
+SERVER_PID=$!
+
+sleep 1
+curl -m 2 http://127.0.0.1:4444/ > /dev/null 2>&1 || true
+sleep 2
+
+kill "$SERVER_PID" 2>/dev/null || true

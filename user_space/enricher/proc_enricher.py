@@ -91,7 +91,6 @@ class ProcEnricher:
                 process["command_line"] = command_line
                 return "ok"
 
-            # Nu suprascriem o valoare deja pusă de normalizer.
             process.setdefault("command_line", UNKNOWN_UNAVAILABLE)
             return "empty"
 

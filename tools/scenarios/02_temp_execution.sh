@@ -8,16 +8,16 @@ set -u
 
 echo "[scenario] Executie din director temporar /tmp"
 
-TMP_BIN="/tmp/edr_test_exec_$$"
+TMP_BIN="/tmp/edr_tmp_exec"
 
-cat > "$TMP_BIN" <<'EOF'
-#!/usr/bin/env bash
-echo "EDR temp execution test"
-whoami
-EOF
-
+cp /bin/sleep "$TMP_BIN"
 chmod +x "$TMP_BIN"
 
-"$TMP_BIN" test_argument_1 test_argument_2
+"$TMP_BIN" 5 &
+TMP_PID=$!
+
+sleep 1
+
+wait "$TMP_PID"
 
 rm -f "$TMP_BIN"

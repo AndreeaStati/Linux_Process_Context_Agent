@@ -2,27 +2,100 @@
 
 import argparse
 import json
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+from event_store import append_events, read_last_events
+from event_receiver_ui import render_events_page
 
 
 class IngestHandler(BaseHTTPRequestHandler):
     output_file: Path
 
+    def send_json(self, status_code, payload):
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(
+            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        )
+
+    def send_html(self, status_code, html):
+        self.send_response(status_code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
+
+    def get_limit(self, query, default=5, maximum=100):
+        try:
+            limit = int(query.get("limit", [str(default)])[0])
+        except ValueError:
+            limit = default
+
+        return max(1, min(limit, maximum))
+
+    def do_GET(self):
+        parsed_url = urlparse(self.path)
+        query = parse_qs(parsed_url.query)
+
+        if parsed_url.path == "/":
+            self.send_json(200, {
+                "status": "running",
+                "service": "edr-mock-event-receiver",
+                "ingest_endpoint": "/api/edr/events",
+                "ingest_method": "POST",
+                "events_api": "/api/edr/events?limit=5",
+                "ui": "/ui?limit=20",
+                "output_file": str(self.output_file)
+            })
+            return
+
+        if parsed_url.path == "/health":
+            self.send_json(200, {
+                "status": "ok"
+            })
+            return
+
+        if parsed_url.path == "/api/edr/events":
+            limit = self.get_limit(query, default=5, maximum=100)
+            events = read_last_events(self.output_file, limit)
+
+            self.send_json(200, {
+                "status": "ok",
+                "count": len(events),
+                "limit": limit,
+                "events": events
+            })
+            return
+
+        if parsed_url.path == "/ui":
+            limit = self.get_limit(query, default=20, maximum=100)
+            events = read_last_events(self.output_file, limit)
+            html = render_events_page(events, limit)
+
+            self.send_html(200, html)
+            return
+
+        self.send_json(404, {
+            "error": "not found"
+        })
+
     def do_POST(self):
-        if self.path != "/api/edr/events":
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"not found\n")
+        parsed_url = urlparse(self.path)
+
+        if parsed_url.path != "/api/edr/events":
+            self.send_json(404, {
+                "error": "not found"
+            })
             return
 
         content_length = int(self.headers.get("Content-Length", "0"))
 
         if content_length <= 0:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"empty body\n")
+            self.send_json(400, {
+                "error": "empty body"
+            })
             return
 
         raw_body = self.rfile.read(content_length)
@@ -30,47 +103,38 @@ class IngestHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except json.JSONDecodeError:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"invalid json\n")
+            self.send_json(400, {
+                "error": "invalid json"
+            })
             return
 
         if not isinstance(payload, list):
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"expected json array\n")
+            self.send_json(400, {
+                "error": "expected json array"
+            })
             return
 
-        received_at = datetime.now(timezone.utc).isoformat()
+        received_count = append_events(self.output_file, payload)
 
-        with self.output_file.open("a", encoding="utf-8") as f:
-            for event in payload:
-                record = {
-                    "received_at": received_at,
-                    "event": event,
-                }
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(f"[+] Received batch: {received_count} events")
 
-        print(f"[+] Received batch: {len(payload)} events")
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-
-        response = {
+        self.send_json(200, {
             "status": "ok",
-            "received": len(payload),
-        }
-        self.wfile.write(json.dumps(response).encode("utf-8"))
+            "received": received_count
+        })
 
     def log_message(self, format, *args):
         return
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Mock HTTP ingest server for EDR events")
+    parser = argparse.ArgumentParser(
+        description="Mock HTTP ingest server for EDR events"
+    )
+
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
+
     parser.add_argument(
         "--output",
         default="data/received_events.jsonl",
@@ -86,7 +150,11 @@ def main():
 
     server = ThreadingHTTPServer((args.host, args.port), IngestHandler)
 
-    print(f"[*] Mock ingest server listening on http://{args.host}:{args.port}/api/edr/events")
+    print(
+        f"[*] Mock ingest server listening on "
+        f"http://{args.host}:{args.port}/api/edr/events"
+    )
+    print(f"[*] UI available at http://{args.host}:{args.port}/ui?limit=20")
     print(f"[*] Writing received events to {output_file}")
 
     try:

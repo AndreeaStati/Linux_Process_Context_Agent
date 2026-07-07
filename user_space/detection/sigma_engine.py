@@ -172,7 +172,6 @@ class SigmaEngine:
             return False
 
     def _selection_matches(self, selection: Any, flat_doc: Dict[str, Any]) -> bool:
-        # Sigma permite și liste de mapări, interpretate ca OR între mapări.
         if isinstance(selection, list):
             return any(self._selection_matches(item, flat_doc) for item in selection)
 

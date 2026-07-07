@@ -15,3 +15,6 @@ hostname
 ps aux | head -n 5
 ip addr show | head -n 20
 ip route show
+
+timeout 3s tail -f /etc/passwd > /dev/null 2>&1 || true
+bash -c "whoami" > /dev/null 2>&1 || true

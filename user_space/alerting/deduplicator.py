@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 @dataclass
 class AlertDedupDecision:
-    """Rezultatul evaluării deduplicatorului pentru un document ECS."""
 
     ecs_doc: Dict[str, Any]
     drop: bool = False
@@ -43,13 +42,13 @@ class AlertDeduplicator:
         time_provider: Optional[Callable[[], float]] = None,
     ) -> None:
         if window_seconds <= 0:
-            raise ValueError("window_seconds trebuie să fie pozitiv")
+            raise ValueError("window_seconds trebuie sa fie pozitiv")
 
         if mode not in self.VALID_MODES:
-            raise ValueError(f"mode trebuie să fie unul dintre: {sorted(self.VALID_MODES)}")
+            raise ValueError(f"mode trebuie sa fie unul dintre: {sorted(self.VALID_MODES)}")
 
         if max_groups <= 0:
-            raise ValueError("max_groups trebuie să fie pozitiv")
+            raise ValueError("max_groups trebuie sa fie pozitiv")
 
         self.window_seconds = float(window_seconds)
         self.mode = mode
